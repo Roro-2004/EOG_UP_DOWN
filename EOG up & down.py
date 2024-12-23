@@ -98,7 +98,6 @@ def plot_signals():
     # Plot raw data
     plt.subplot(2, 1, 1)
     plt.plot(raw_data[0], label="Raw Signal")
-
     plt.title("Raw Signal")
     plt.xlabel("Samples")
     plt.ylabel("Amplitude")
@@ -107,19 +106,21 @@ def plot_signals():
     # Plot processed or flattened data
     plt.subplot(2, 1, 2)
     if 'flattened_processed_data' in globals():
-        plt.plot(flattened_processed_data, label="Flattened Processed Signal", color="orange")
-        plt.title("Flattened Processed Signal (After Feature Extraction)")
+        # Show only one oscillation of the flattened signal
+        one_oscillation = flattened_processed_data[0:500]  # Adjust the slicing range as needed
+        plt.plot(one_oscillation, label="One Oscillation of Flattened Processed Signal", color="orange")
+        plt.title("One Oscillation of Flattened Processed Signal (After Feature Extraction)")
     else:
         plt.plot(processed_data[0], label="Processed Signal", color="orange")
         plt.title("Processed Signal")
 
-    
     plt.xlabel("Samples")
     plt.ylabel("Normalized Amplitude")
     plt.legend()
 
     plt.tight_layout()
     plt.show()
+
 
 
 
