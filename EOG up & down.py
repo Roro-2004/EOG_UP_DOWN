@@ -5,207 +5,254 @@ from tkinter import filedialog, messagebox
 import matplotlib.pyplot as plt
 import pywt
 from sklearn.neighbors import KNeighborsClassifier
-from sklearn.metrics import accuracy_score
-
+from sklearn.preprocessing import StandardScaler
+from scipy import stats
 
 def butter_bandpass(lowcut, highcut, fs, order=4):
+def butter_bandpass(lowcut, highcut, fs, order=5):
     nyquist = 0.5 * fs
     low = lowcut / nyquist
     high = highcut / nyquist
-    b, a = butter(order, [low, high], btype="band")
+    b, a = butter(order, [low, high], btype='band')
     return b, a
 
-
-def preprocessing(file_path, fs, lowcut, highcut):
+def preprocessing(file_path, fs=176, lowcut=0.5, highcut=20):
     try:
         data = np.loadtxt(file_path)
-    except Exception as e:
-        messagebox.showerror("File Error", f"Error reading file: {e}")
-        return None, None
+        processed_rows = []
+        
+        for row in data:
+            # Step 1: Remove outliers using z-score
+            z_scores = stats.zscore(row)
+            row = np.where(abs(z_scores) > 3, np.mean(row), row)
+            
+            # Step 2: Mean removal
+            row = row - np.mean(row)
+            
+            # Step 3: Enhanced bandpass filtering
+            b, a = butter_bandpass(lowcut, highcut, fs)
+            filtered_data = filtfilt(b, a, row)
+            
+            # Step 3: Normalization (corrected for 1D array)
+            normalized_data = (filtered_data - np.min(filtered_data)) / (
+                np.max(filtered_data) - np.min(filtered_data)
+            )
 
-    # Step 1: Mean removal
-    mean_removed_data = data - np.mean(data, axis=1, keepdims=True)
+            # Step 4: Resampling (corrected for 1D array)
+            resampled_data = resample(normalized_data, num=len(normalized_data) // 2)
 
-    # Step 2: Apply bandpass filter
-    b, a = butter_bandpass(lowcut, highcut, fs)
-    filtered_data = filtfilt(b, a, mean_removed_data, axis=1)
-
-    # Step 3: Normalization
-    normalized_data = (filtered_data - np.min(filtered_data, axis=1, keepdims=True)) / (
-        np.max(filtered_data, axis=1, keepdims=True) - np.min(filtered_data, axis=1, keepdims=True)
-    )
-
-    # Step 4: Resampling
-    resampled_data = resample(normalized_data, num=int(normalized_data.shape[1] / 2), axis=1)
-
-    # Handle NaN values
-    resampled_data = np.nan_to_num(resampled_data, nan=0.0)
-
-    return data, resampled_data
-
-
-def browse_file(entry):
-    file_path = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
-    if file_path:
-        entry.delete(0, tk.END)
-        entry.insert(0, file_path)
-
-
-def start_processing():
-    global raw_data, processed_data
-    file_path = file_entry.get()
-    try:
-        fs = float(fs_entry.get())
-        lowcut = float(lowcut_entry.get())
-        highcut = float(highcut_entry.get())
-    except ValueError:
-        messagebox.showerror("Input Error", "Please enter valid numerical values for fs, lowcut, and highcut.")
-        return
-
-    if not file_path:
-        messagebox.showerror("File Error", "Please select a file.")
-        return
+            # Handle NaN values
+            resampled_data = np.nan_to_num(resampled_data, nan=0.0)
+            
+            processed_rows.append(resampled_data)
+            
+        return np.array(processed_rows)
     
-    raw_data, processed_data = preprocessing(file_path, fs, lowcut, highcut)
-    print(processed_data)
+    
+    except Exception as e:
+        messagebox.showerror("Processing Error", f"Error during signal processing: {e}")
+        return None
 
+def extract_wavelet_features(signal):
+    try:
+        all_features = []
+        for row in signal:
+            row_features = []
+            
+            # 1. Wavelet features with more wavelet families
+            wavelet_families = ['db1', 'db2', 'db3', 'db4']
+            for wavelet in wavelet_families:
+                coeffs = pywt.wavedec(row, wavelet, level=4)
+                for coeff in coeffs:
+                    row_features.extend([np.mean(coeff),np.std(coeff), np.max(coeff),np.min(coeff),stats.skew(coeff), stats.kurtosis(coeff), np.median(coeff), stats.iqr(coeff)])
 
-def extract_wavelet_features(signal, wavelet_name="db3", levels=4):
-    coeffs = pywt.wavedec(signal, wavelet_name, level=levels)
-    features = []
-    for coeff in coeffs:
-        mean = np.nan_to_num(np.mean(coeff), nan=0.0)
-        std = np.nan_to_num(np.std(coeff), nan=0.0)
-        features.append(mean)
-        features.append(std)
-    return np.array(features)
+            all_features.append(row_features)
+            
+        return np.array(all_features)
 
+    except Exception as e:
+        messagebox.showerror("Feature Extraction Error", f"Error during feature extraction: {e}")
+        return None
 
-def process_wavelet_features():
-    global raw_data, processed_data, flattened_processed_data,extracted_features
-
-    # Flatten processed data for feature extraction
-    flattened_processed_data = processed_data.flatten()
-
-    # Extract features
-    extracted_features = extract_wavelet_features(flattened_processed_data, 'db3',4)
-
-    messagebox.showinfo("Feature Extraction Complete", f"Extracted Features:\n{extracted_features}")
-    return extracted_features
-
-def plot_signals():
-    global raw_data, processed_data, flattened_processed_data
-
-    if raw_data is None or processed_data is None:
-        messagebox.showerror("Plot Error", "No processed data available. Please process the signal first.")
-        return
-
+def plot_signals(data):
     plt.figure(figsize=(8, 8))
 
-    # Plot raw data
-    plt.subplot(2, 1, 1)
-    plt.plot(raw_data[0], label="Raw Signal")
-    plt.title("Raw Signal")
-    plt.xlabel("Samples")
-    plt.ylabel("Amplitude")
-    plt.legend()
-
-    # Plot processed or flattened data
     plt.subplot(2, 1, 2)
-    if 'flattened_processed_data' in globals():
-        one_oscillation = flattened_processed_data[0:500]  # Adjust the slicing range as needed
-        plt.plot(one_oscillation, label="One Oscillation of Flattened Processed Signal", color="orange")
-        plt.title("One Oscillation of Flattened Processed Signal (After Feature Extraction)")
-    else:
-        plt.plot(processed_data[0], label="Processed Signal", color="orange")
-        plt.title("Processed Signal")
-
+    one_oscillation = data[0:500]  # Adjust the slicing range as needed
+    plt.plot(one_oscillation, label="One Oscillation of Flattened Processed Signal", color="orange")
+    plt.title("One Oscillation of Flattened Processed Signal (After Feature Extraction)")
     plt.xlabel("Samples")
     plt.ylabel("Normalized Amplitude")
     plt.legend()
-
     plt.tight_layout()
     plt.show()
 
 
-def classify_with_knn():
-    global extracted_features
-
-    if extracted_features is None:
-        messagebox.showerror("KNN Classification", "No features available. Please extract features first.")
-        return
-
-    # Simulate train and test data
-    X_train = np.tile(extracted_features, (10, 1))  # Replicating the feature for training
-    y_train = np.random.randint(0, 2, size=(10,))  # Simulated labels
-    X_test = np.tile(extracted_features, (5, 1))   # Replicating the feature for testing
-    y_test = np.random.randint(0, 2, size=(5,))    # Simulated labels
-
-    # Ensure there are no NaN values
-    X_train = np.nan_to_num(X_train, nan=0.0)
-    X_test = np.nan_to_num(X_test, nan=0.0)
-
-    # Train KNN classifier
-    k = 3  # Choose k
-    knn = KNeighborsClassifier(n_neighbors=k)
-    knn.fit(X_train, y_train)
-
-    # Test the classifier
-    y_pred = knn.predict(X_test)
-
-    # Evaluate performance
-    accuracy = accuracy_score(y_test, y_pred)
-    messagebox.showinfo("KNN Classification", f"Accuracy: {accuracy * 100:.2f}%")
-
-    return accuracy
 
 
-root = tk.Tk()
-root.title("Signal Processing GUI")
 
-# File selection
-tk.Label(root, text="Select File:").grid(row=0, column=0, padx=5, pady=5, sticky="e")
-file_entry = tk.Entry(root, width=50)
-file_entry.grid(row=0, column=1, padx=5, pady=5)
-browse_button = tk.Button(root, text="Browse", command=lambda: browse_file(file_entry))
-browse_button.grid(row=0, column=2, padx=5, pady=5)
 
-# Sampling frequency input
-tk.Label(root, text="Sampling Frequency (fs):").grid(row=1, column=0, padx=5, pady=5, sticky="e")
-fs_entry = tk.Entry(root, width=20)
-fs_entry.grid(row=1, column=1, padx=5, pady=5, sticky="w")
 
-# Lowcut frequency input
-tk.Label(root, text="Lowcut Frequency (Hz):").grid(row=2, column=0, padx=5, pady=5, sticky="e")
-lowcut_entry = tk.Entry(root, width=20)
-lowcut_entry.grid(row=2, column=1, padx=5, pady=5, sticky="w")
+class EOGClassifier:
+    def __init__(self):
+        self.knn = KNeighborsClassifier(
+            n_neighbors=3,  # Number of neighbors to consider
+            weights='distance',  # Weight points by distance
+            metric='euclidean',  # Distance metric
+            n_jobs=-1  # Use all available CPU cores
+        )
+        self.scaler = StandardScaler()
+        self.is_trained = False
 
-# Highcut frequency input
-tk.Label(root, text="Highcut Frequency (Hz):").grid(row=3, column=0, padx=5, pady=5, sticky="e")
-highcut_entry = tk.Entry(root, width=20)
-highcut_entry.grid(row=3, column=1, padx=5, pady=5, sticky="w")
+    def train(self, up_file, down_file):
+        try:
+            # Process up movement data
+            up_data = preprocessing(up_file)
+            if up_data is None:
+                return False
+            up_features = extract_wavelet_features(up_data)
+            
+            # Process down movement data
+            down_data = preprocessing(down_file)
+            if down_data is None:
+                return False
+            down_features = extract_wavelet_features(down_data)
+            
+            # Create labels
+            up_labels = np.ones(len(up_features))
+            down_labels = np.zeros(len(down_features))
+            
+            # Combine features and labels
+            X_train = np.vstack([up_features, down_features])
+            y_train = np.concatenate([up_labels, down_labels])
+            
+            # Scale features
+            X_train_scaled = self.scaler.fit_transform(X_train)
+                        
+            # Train the model
+            self.knn.fit(X_train_scaled, y_train)
+            self.is_trained = True
+            
+            # Calculate and display training metrics
+            train_accuracy = self.knn.score(X_train_scaled, y_train)
+            
+            messagebox.showinfo("Training Complete", 
+                              f"Training accuracy: {train_accuracy*100:.2f}%\n")            
+            return True
 
-# Start processing button
-process_button = tk.Button(root, text="Start Processing", command=start_processing)
-process_button.grid(row=4, column=0, columnspan=3, pady=10)
+        except Exception as e:
+            messagebox.showerror("Training Error", f"Error during model training: {e}")
+            return False
 
-# Plot signals button
-plot_button = tk.Button(root, text="Plot Signals", command=plot_signals)
-plot_button.grid(row=5, column=0, columnspan=3, pady=10)
+    def predict(self, test_file):
+        if not self.is_trained:
+            messagebox.showerror("Error", "Model not trained yet!")
+            return None
+        
+        try:
+            # Process test data
+            test_data = preprocessing(test_file)
+            if test_data is None:
+                return None
+                
+            # Extract features and scale
+            test_features = extract_wavelet_features(test_data)
+            test_features_scaled = self.scaler.transform(test_features)
 
-# Extract features button
-Extract_Features = tk.Button(root, text="Extract Features", command=process_wavelet_features)
-Extract_Features.grid(row=6, column=0, columnspan=3, pady=10)
+            # Get prediction probabilities
+            pred_probs = self.knn.predict_proba(test_features_scaled)
+            predictions = self.knn.predict(test_features_scaled)
+                        
+            print(pred_probs)
 
-# Classify using KNN button
-knn_button = tk.Button(root, text="Classify with KNN", command=classify_with_knn)
-knn_button.grid(row=7, column=0, columnspan=3, pady=10)
+            
+            # Calculate confidence using mean probability
+            up_prob = np.mean(pred_probs[:, 1])
+            down_prob = np.mean(pred_probs[:, 0])
+            
+            # Determine final prediction
+            final_prediction = "UP" if up_prob > down_prob else "DOWN"
+            confidence = max(up_prob, down_prob) * 100
+            
+            return f"{final_prediction} (Confidence: {confidence:.1f}%)"
 
-# Variables to hold data
-raw_data = None
-processed_data = None
-flattened_processed_data = None
-extracted_features = None
+        except Exception as e:
+            messagebox.showerror("Prediction Error", f"Error during prediction: {e}")
+            return None
 
-# Run the GUI loop
-root.mainloop()
+
+
+
+
+# Rest of the GUI code remains the same
+class EOGInterface:
+    def __init__(self):
+        self.root = tk.Tk()
+        self.root.title("EOG Movement Classifier")
+        self.classifier = EOGClassifier()
+        self.setup_gui()
+
+    def setup_gui(self):
+        # Training data section
+        train_frame = tk.LabelFrame(self.root, text="Training Data", padx=5, pady=5)
+        train_frame.pack(padx=10, pady=5, fill="x")
+
+        # Up movement file
+        tk.Label(train_frame, text="Up Movement File:").pack(anchor="w")
+        self.up_entry = tk.Entry(train_frame, width=50)
+        self.up_entry.pack(side=tk.LEFT, padx=5)
+        tk.Button(train_frame, text="Browse", command=lambda: self.browse_file(self.up_entry)).pack(side=tk.RIGHT)
+
+        # Down movement file
+        down_frame = tk.LabelFrame(self.root, text="Down Movement File", padx=5, pady=5)
+        down_frame.pack(padx=10, pady=5, fill="x")
+        self.down_entry = tk.Entry(down_frame, width=50)
+        self.down_entry.pack(side=tk.LEFT, padx=5)
+        tk.Button(down_frame, text="Browse", command=lambda: self.browse_file(self.down_entry)).pack(side=tk.RIGHT)
+
+        # Train button
+        tk.Button(self.root, text="Train Model", command=self.train_model).pack(pady=5)
+
+        # Test section
+        test_frame = tk.LabelFrame(self.root, text="Test Data", padx=5, pady=5)
+        test_frame.pack(padx=10, pady=5, fill="x")
+        self.test_entry = tk.Entry(test_frame, width=50)
+        self.test_entry.pack(side=tk.LEFT, padx=5)
+        tk.Button(test_frame, text="Browse", command=lambda: self.browse_file(self.test_entry)).pack(side=tk.RIGHT)
+
+        # Predict button
+        tk.Button(self.root, text="Predict", command=self.predict).pack(pady=5)
+
+    def browse_file(self, entry):
+        filename = filedialog.askopenfilename(filetypes=[("Text files", "*.txt")])
+        if filename:
+            entry.delete(0, tk.END)
+            entry.insert(0, filename)
+
+    def train_model(self):
+        up_file = self.up_entry.get()
+        down_file = self.down_entry.get()
+        
+        if not up_file or not down_file:
+            messagebox.showerror("Error", "Please select both training files!")
+            return
+            
+        if self.classifier.train(up_file, down_file):
+            messagebox.showinfo("Success", "Model trained successfully!")
+            
+    def predict(self):
+        test_file = self.test_entry.get()
+        if not test_file:
+            messagebox.showerror("Error", "Please select a test file!")
+            return
+            
+        result = self.classifier.predict(test_file)
+        if result:
+            messagebox.showinfo("Prediction", f"Predicted Movement: {result}")
+
+    def run(self):
+        self.root.mainloop()
+
+if __name__ == "__main__":
+    app = EOGInterface()
+    app.run()
