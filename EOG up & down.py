@@ -2,13 +2,14 @@ import numpy as np
 from scipy.signal import butter, filtfilt, resample
 import tkinter as tk
 from tkinter import filedialog, messagebox
-import matplotlib.pyplot as plt
 import pywt
 from sklearn.neighbors import KNeighborsClassifier
 from sklearn.preprocessing import StandardScaler
 from scipy import stats
 
 
+
+#-------------------------------------------------------PREPROCESSING-------------------------------------------------------#
 def butter_bandpass(lowcut, highcut, fs, order=4):
     nyquist = 0.5 * fs
     low = lowcut / nyquist
@@ -44,7 +45,11 @@ def preprocessing(file_path, fs=176, lowcut=0.5, highcut=20):
         processed_rows.append(resampled_data)
                 
     return np.array(processed_rows)
+#---------------------------------------------------------------------------------------------------------------------------#
 
+
+
+#-----------------------------------------------------FEATURE EXTRACTION----------------------------------------------------#
 def extract_wavelet_features(signal):
     all_features = []
     for row in signal:
@@ -57,9 +62,11 @@ def extract_wavelet_features(signal):
 
         all_features.append(row_features)       
     return np.array(all_features)
+#---------------------------------------------------------------------------------------------------------------------------#
 
 
 
+#-----------------------------------------------------KNN CLASSIFICATION----------------------------------------------------#
 class EOGClassifier:
     def __init__(self):
         self.knn = KNeighborsClassifier(n_neighbors=3, weights='distance')
@@ -126,9 +133,11 @@ class EOGClassifier:
         print(f"Final prediction is : {final_prediction}")
         
         return f"{final_prediction}"
+#---------------------------------------------------------------------------------------------------------------------------#
 
 
 
+#------------------------------------------------------------GUI------------------------------------------------------------#
 class EOGInterface:
     def __init__(self):
         self.root = tk.Tk()
@@ -191,7 +200,7 @@ class EOGInterface:
     def run(self):
         self.root.mainloop()
 
-
 if __name__ == "__main__":
     app = EOGInterface()
     app.run()
+#---------------------------------------------------------------------------------------------------------------------------#
