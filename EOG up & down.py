@@ -25,7 +25,7 @@ def preprocessing(file_path, fs=176, lowcut=0.5, highcut=20):
         z_scores = stats.zscore(row)
         row = np.where(abs(z_scores) > 3, np.mean(row), row)
         
-        # mean removal
+        # mean removal to center data
         row = row - np.mean(row)
         
         # filter
@@ -53,12 +53,11 @@ def extract_wavelet_features(signal):
         for wavelet in wavelet_families:
             coefficients = pywt.wavedec(row, wavelet, level=4)
             for co in coefficients:
+                # measure mean, standard deviosn, max coff, min coff, assymetry of coff shape of distribution, median and iqr
                 row_features.extend([np.mean(co),np.std(co), np.max(co),np.min(co),stats.skew(co), stats.kurtosis(co), np.median(co), stats.iqr(co)])
 
         all_features.append(row_features)       
     return np.array(all_features)
-
-
 
 class EOGClassifier:
     def __init__(self):
@@ -127,8 +126,6 @@ class EOGClassifier:
         
         return f"{final_prediction}"
 
-
-
 class EOGInterface:
     def __init__(self):
         self.root = tk.Tk()
@@ -190,7 +187,6 @@ class EOGInterface:
 
     def run(self):
         self.root.mainloop()
-
 
 if __name__ == "__main__":
     app = EOGInterface()
