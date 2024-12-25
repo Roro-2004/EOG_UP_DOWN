@@ -56,12 +56,14 @@ def extract_wavelet_features(signal):
     all_features = []
     for row in signal:
         row_features = []
-        wavelet_families = ['db1', 'db2', 'db3', 'db4']
-        for wavelet in wavelet_families:
-            coefficients = pywt.wavedec(row, wavelet, level=4)
+        wavelet_families = ['db1', 'db2', 'db3', 'db4'] # multiple wavelets give a richer set of features for the signal
+        for wavelet in wavelet_families: 
+            coefficients = pywt.wavedec(row, wavelet, level=4) # coefficients = D1,D2,D3,D4,A4
             for co in coefficients:
-                # measure mean, standard deviosn, max coff, min coff, assymetry of coff shape of distribution, median and iqr
+                # measure mean, standard deviosn, max coff, min coff, assymetry of coff, shape of distribution, median and iqr
                 row_features.extend([np.mean(co),np.std(co), np.max(co),np.min(co),stats.skew(co), stats.kurtosis(co), np.median(co), stats.iqr(co)])
+                # this reduces noise and emphasizes the parts of the signal that matter
+
 
         all_features.append(row_features)       
     return np.array(all_features)
@@ -96,7 +98,7 @@ class EOGClassifier:
         y_train = np.concatenate([up_labels, down_labels])
         
         # scale features
-        X_train_scaled = self.scaler.fit_transform(X_train)
+        X_train_scaled = self.scaler.fit_transform(X_train) # ensuring features are on the same scale
                     
         # train the model
         self.knn.fit(X_train_scaled, y_train)
@@ -120,15 +122,15 @@ class EOGClassifier:
         test_features_scaled = self.scaler.transform(test_features)
 
         # Get prediction probabilities
-        pred_probs = self.knn.predict_proba(test_features_scaled)
-        predictions = self.knn.predict(test_features_scaled)
+        pred_probs = self.knn.predict_proba(test_features_scaled) # returns an array of probabilities for each class
+        predictions = self.knn.predict(test_features_scaled) # makes the final class predictions
                     
         print(predictions)
         
         # calculate confidence using mean probability
-        up_prob = np.mean(pred_probs[:, 1])
-        down_prob = np.mean(pred_probs[:, 0])
-        confidence = max(up_prob, down_prob) * 100
+        up_prob = np.mean(pred_probs[:, 1]) # calculates the average probability of the test instances being classified as "UP"
+        down_prob = np.mean(pred_probs[:, 0]) # calculates the average probability of the test instances being classified as "DOWN"
+        confidence = max(up_prob, down_prob) * 100 # confidence is the model’s certainty about the predicted class label
         print(f"(Confidence: {confidence:.1f}%)")
 
         # Determine final prediction
