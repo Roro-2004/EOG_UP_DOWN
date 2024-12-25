@@ -10,11 +10,12 @@ from scipy import stats
 
 
 #-------------------------------------------------------PREPROCESSING-------------------------------------------------------#
-def butter_bandpass(lowcut, highcut, fs, order=4):
-    nyquist = 0.5 * fs
+def butter_bandpass(lowcut, highcut, fs, order=4): # higher values for "order" increase filter sharpness.
+    nyquist = 0.5 * fs # nyquist is the highest freq that can be sampled without aliasing
     low = lowcut / nyquist
     high = highcut / nyquist
-    b, a = butter(order, [low, high], btype='band')
+    # butter filter require frequencies as fractions of the Nyquist frequency.
+    b, a = butter(order, [low, high], btype='band') # filters coefficients
     return b, a
 
 def preprocessing(file_path, fs=176, lowcut=0.5, highcut=20):
@@ -24,20 +25,21 @@ def preprocessing(file_path, fs=176, lowcut=0.5, highcut=20):
     for row in data:
         # remove outliers
         z_scores = stats.zscore(row)
-        row = np.where(abs(z_scores) > 3, np.mean(row), row)
+        row = np.where(abs(z_scores) > 3, np.mean(row), row) # replace any value with an abs z-score > 3 with the mean of the row
         
         # mean removal
-        row = row - np.mean(row)
+        row = row - np.mean(row) # centers the signal around zero
         
         # filter
         b, a = butter_bandpass(lowcut, highcut, fs)
-        filtered_data = filtfilt(b, a, row)
+        filtered_data = filtfilt(b, a, row) # filter unwanted frequencies outside the range (0.5 to 20 Hz)
+
         
         # normalization
-        normalized_data = (filtered_data - np.min(filtered_data)) / (np.max(filtered_data) - np.min(filtered_data))
+        normalized_data = (filtered_data - np.min(filtered_data)) / (np.max(filtered_data) - np.min(filtered_data)) # scales data to a range of (0 - 1) for consistency
 
         # resampling
-        resampled_data = resample(normalized_data, num=len(normalized_data) // 2)
+        resampled_data = resample(normalized_data, num=len(normalized_data) // 2) # downsampling (shelna nos el data) to reduce computations
 
         # removing nulls
         resampled_data = np.nan_to_num(resampled_data, nan=0.0)
@@ -58,6 +60,7 @@ def extract_wavelet_features(signal):
         for wavelet in wavelet_families:
             coefficients = pywt.wavedec(row, wavelet, level=4)
             for co in coefficients:
+                # measure mean, standard deviosn, max coff, min coff, assymetry of coff shape of distribution, median and iqr
                 row_features.extend([np.mean(co),np.std(co), np.max(co),np.min(co),stats.skew(co), stats.kurtosis(co), np.median(co), stats.iqr(co)])
 
         all_features.append(row_features)       
